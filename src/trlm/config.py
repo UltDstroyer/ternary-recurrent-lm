@@ -23,6 +23,7 @@ class ModelConfig:
     halt_epsilon: float = 0.01
     weight_mode: Literal["full", "ternary", "quantized"] = "ternary"
     quantization_levels: int = 3
+    quantization_scheme: str = "uniform"
     tie_core: bool = True
     memory_enabled: bool = True
     adaptive_halting: bool = True
@@ -62,6 +63,18 @@ class ModelConfig:
             raise ValueError("quantization_levels must be in [3, 256]")
         if self.weight_mode == "ternary" and self.quantization_levels != 3:
             raise ValueError("ternary weight mode requires exactly 3 quantization levels")
+        allowed_schemes = {
+            "uniform",
+            "symmetric_narrow",
+            "symmetric_wide",
+            "zero_positive",
+            "zero_negative",
+            "zero_adaptive",
+        }
+        if self.quantization_scheme not in allowed_schemes:
+            raise ValueError(f"unknown quantization scheme: {self.quantization_scheme}")
+        if self.quantization_scheme != "uniform" and self.quantization_levels != 4:
+            raise ValueError("custom quantization schemes require exactly 4 levels")
         if not 0.0 < self.memory_novelty_power <= 1.0:
             raise ValueError("memory_novelty_power must be in (0, 1]")
         if not 0.0 <= self.memory_merge_threshold <= 1.0:
