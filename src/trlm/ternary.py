@@ -15,6 +15,7 @@ def make_linear(
     weight_mode: str,
     threshold_factor: float,
     quantization_levels: int = 3,
+    quantization_scheme: str = "uniform",
 ) -> nn.Linear:
     if weight_mode == "full":
         return nn.Linear(in_features, out_features, bias=bias)
@@ -29,6 +30,7 @@ def make_linear(
             bias=bias,
             threshold_factor=threshold_factor,
             quantization_levels=quantization_levels,
+            quantization_scheme=quantization_scheme,
         )
     raise ValueError(f"unknown weight mode: {weight_mode}")
 
@@ -48,30 +50,61 @@ def hard_quantize(
     weight: Tensor,
     quantization_levels: int,
     threshold_factor: float = 0.7,
+    quantization_scheme: str = "uniform",
 ) -> Tensor:
-    """Project each output row onto a symmetric, uniformly spaced value alphabet."""
+    """Project each output row onto a fixed or row-adaptive value alphabet."""
     if weight.ndim < 2:
         raise ValueError("quantized projection expects at least a matrix")
     if quantization_levels < 3:
         raise ValueError("quantization_levels must be at least 3")
     if quantization_levels == 3:
+        if quantization_scheme != "uniform":
+            raise ValueError("custom quantization schemes require exactly 4 levels")
         return hard_ternary(weight, threshold_factor)
+
+    if quantization_levels != 4 and quantization_scheme != "uniform":
+        raise ValueError("custom quantization schemes require exactly 4 levels")
+
+    fixed_alphabets = {
+        "symmetric_narrow": (-1.0, -0.25, 0.25, 1.0),
+        "symmetric_wide": (-1.0, -0.5, 0.5, 1.0),
+        "zero_positive": (-1.0, 0.0, 0.5, 1.0),
+        "zero_negative": (-1.0, -0.5, 0.0, 1.0),
+    }
+    if quantization_scheme == "uniform":
+        alphabet = torch.linspace(
+            -1.0,
+            1.0,
+            quantization_levels,
+            dtype=weight.dtype,
+            device=weight.device,
+        )
+        return _project_to_alphabet(weight, alphabet)
+    if quantization_scheme in fixed_alphabets:
+        alphabet = weight.new_tensor(fixed_alphabets[quantization_scheme])
+        return _project_to_alphabet(weight, alphabet)
+    if quantization_scheme == "zero_adaptive":
+        positive = _project_to_alphabet(weight, weight.new_tensor((-1.0, 0.0, 0.5, 1.0)))
+        negative = _project_to_alphabet(weight, weight.new_tensor((-1.0, -0.5, 0.0, 1.0)))
+        reduce_dims = tuple(range(1, weight.ndim))
+        positive_error = (weight - positive).square().mean(dim=reduce_dims, keepdim=True)
+        negative_error = (weight - negative).square().mean(dim=reduce_dims, keepdim=True)
+        return torch.where(positive_error <= negative_error, positive, negative)
+    raise ValueError(f"unknown quantization scheme: {quantization_scheme}")
+
+
+def _project_to_alphabet(weight: Tensor, alphabet: Tensor) -> Tensor:
+    """Fit a per-row scale and assign weights to the nearest alphabet value."""
 
     reduce_dims = tuple(range(1, weight.ndim))
     scale = weight.abs().amax(dim=reduce_dims, keepdim=True).clamp_min(
         torch.finfo(weight.dtype).eps
     )
-    alphabet = torch.linspace(
-        -1.0,
-        1.0,
-        quantization_levels,
-        dtype=weight.dtype,
-        device=weight.device,
-    )
     assigned = torch.zeros_like(weight)
     for _ in range(2):
         normalized = (weight / scale).clamp(-1.0, 1.0)
-        indices = ((normalized + 1.0) * (quantization_levels - 1) / 2.0).round().long()
+        distances = (normalized.unsqueeze(-1) - alphabet).abs()
+        indices = distances.argmin(dim=-1)
         assigned = alphabet[indices]
         denominator = assigned.square().sum(dim=reduce_dims, keepdim=True).clamp_min(1.0)
         scale = (weight * assigned).sum(dim=reduce_dims, keepdim=True) / denominator
@@ -85,6 +118,7 @@ class QuantizedLinear(nn.Linear):
         *args: object,
         threshold_factor: float = 0.7,
         quantization_levels: int = 3,
+        quantization_scheme: str = "uniform",
         **kwargs: object,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -92,6 +126,7 @@ class QuantizedLinear(nn.Linear):
             raise ValueError("quantization_levels must be at least 3")
         self.threshold_factor = threshold_factor
         self.quantization_levels = quantization_levels
+        self.quantization_scheme = quantization_scheme
         self.quantization_strength = 1.0
 
     def projected_weight(self) -> Tensor:
@@ -99,6 +134,7 @@ class QuantizedLinear(nn.Linear):
             self.weight,
             self.quantization_levels,
             self.threshold_factor,
+            self.quantization_scheme,
         )
 
     def forward(self, inputs: Tensor) -> Tensor:
