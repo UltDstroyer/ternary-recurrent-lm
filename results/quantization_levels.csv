@@ -1,2 +1,3 @@
 seed,variant,parameters,packed_bytes,validation_cross_entropy,validation_perplexity,validation_accuracy,expected_loops,actual_loops,tokens_per_second,stability_halt_rate,training_seconds
 19,q3_level_shared_capacity,3100065,1233120,0.8273599007422388,2.2872721364894013,0.7385825536284801,6.0,6,9562.355431080412,0.0,382.95908605099976
+23,q3_level_shared_capacity,3100065,1233120,0.8494344491057612,2.33832403665162,0.7325065609310817,6.0,6,8938.097952846529,0.0,385.39852172500014
