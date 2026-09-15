@@ -49,9 +49,8 @@ in `results/size_matched_summary.csv`.
 
 The 3-, 4-, and 5-level comparison is in
 [`docs/results-quantization-levels.md`](docs/results-quantization-levels.md), with the exact
-surviving aggregate and seed-level loss values in
-`results/quantization_levels_recovered_summary.csv`. The original per-run JSON/CSV must be
-regenerated because the temporary workspace was cleared before those files were committed.
+aggregate values in `results/quantization_levels_summary.csv` and complete per-run data in
+`results/quantization_levels.json` and `results/quantization_levels.csv`.
 
 The experiment uses WikiText-2's predefined train and validation splits. The test split is
 downloaded but deliberately left untouched. Ternary weights are simulated during training;
