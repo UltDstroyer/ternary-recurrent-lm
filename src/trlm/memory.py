@@ -17,6 +17,7 @@ class ScratchpadMemory(nn.Module):
         threshold_factor: float = 0.7,
         weight_mode: str = "ternary",
         quantization_levels: int = 3,
+        quantization_scheme: str = "uniform",
         novelty_power: float = 0.5,
         merge_threshold: float = 0.15,
         chunks: int = 1,
@@ -33,6 +34,7 @@ class ScratchpadMemory(nn.Module):
             weight_mode=weight_mode,
             threshold_factor=threshold_factor,
             quantization_levels=quantization_levels,
+            quantization_scheme=quantization_scheme,
         )
         self.read_query = linear(d_model)
         self.read_output = linear(d_model)
