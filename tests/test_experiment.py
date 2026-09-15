@@ -2,6 +2,7 @@ import torch
 
 from trlm.config import ModelConfig
 from trlm.experiment import (
+    four_level_grouping_variants,
     improvement_variants,
     long_training_variants,
     model_config_for,
@@ -65,6 +66,7 @@ def test_suite_selection_rejects_unknown_names() -> None:
     assert len(variants_for_suite("long_training")) == 6
     assert len(variants_for_suite("size_matched")) == 5
     assert len(variants_for_suite("quantization_levels")) == 3
+    assert len(variants_for_suite("four_level_groupings")) == 6
     try:
         variants_for_suite("missing")
     except ValueError as error:
@@ -96,6 +98,24 @@ def test_size_matched_models_use_the_untied_storage_budget() -> None:
 def test_quantization_level_suite_changes_only_weight_alphabet() -> None:
     variants = quantization_level_variants()
     assert [variant.quantization_levels for variant in variants] == [3, 4, 5]
+    assert all(
+        (variant.d_model, variant.n_heads, variant.d_ff) == (352, 8, 1888)
+        for variant in variants
+    )
+
+
+def test_four_level_grouping_suite_changes_only_grouping() -> None:
+    variants = four_level_grouping_variants()
+    assert len(variants) == 6
+    assert {variant.quantization_scheme for variant in variants} == {
+        "uniform",
+        "symmetric_narrow",
+        "symmetric_wide",
+        "zero_positive",
+        "zero_negative",
+        "zero_adaptive",
+    }
+    assert all(variant.quantization_levels == 4 for variant in variants)
     assert all(
         (variant.d_model, variant.n_heads, variant.d_ff) == (352, 8, 1888)
         for variant in variants
