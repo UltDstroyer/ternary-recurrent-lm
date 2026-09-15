@@ -103,8 +103,8 @@ def _project_to_alphabet(weight: Tensor, alphabet: Tensor) -> Tensor:
     assigned = torch.zeros_like(weight)
     for _ in range(2):
         normalized = (weight / scale).clamp(-1.0, 1.0)
-        distances = (normalized.unsqueeze(-1) - alphabet).abs()
-        indices = distances.argmin(dim=-1)
+        boundaries = (alphabet[:-1] + alphabet[1:]) / 2.0
+        indices = torch.bucketize(normalized.contiguous(), boundaries)
         assigned = alphabet[indices]
         denominator = assigned.square().sum(dim=reduce_dims, keepdim=True).clamp_min(1.0)
         scale = (weight * assigned).sum(dim=reduce_dims, keepdim=True) / denominator
