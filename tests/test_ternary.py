@@ -48,6 +48,28 @@ def test_five_level_projection_includes_zero() -> None:
     assert bool((projected == 0).any())
 
 
+def test_four_level_zero_groupings_include_zero() -> None:
+    weights = torch.tensor([[-2.0, -0.1, 0.0, 0.5, 2.0]])
+    for scheme in ("zero_positive", "zero_negative", "zero_adaptive"):
+        projected = hard_quantize(weights, 4, quantization_scheme=scheme)
+        assert bool((projected == 0).any()), scheme
+        assert torch.unique(projected).numel() <= 4
+
+
+def test_row_adaptive_zero_grouping_uses_both_orientations() -> None:
+    weights = torch.tensor(
+        [
+            [-1.0, 0.0, 0.4, 0.8],
+            [-0.8, -0.4, 0.0, 1.0],
+        ]
+    )
+    projected = hard_quantize(weights, 4, quantization_scheme="zero_adaptive")
+    assert bool((projected[0] == 0).any())
+    assert bool((projected[1] == 0).any())
+    assert (projected[0] > 0).sum() >= (projected[0] < 0).sum()
+    assert (projected[1] < 0).sum() >= (projected[1] > 0).sum()
+
+
 def test_general_quantized_linear_preserves_straight_through_gradients() -> None:
     layer = QuantizedLinear(4, 2, bias=False, quantization_levels=5)
     layer(torch.ones(3, 4)).sum().backward()
