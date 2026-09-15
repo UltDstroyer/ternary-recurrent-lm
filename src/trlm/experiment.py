@@ -54,6 +54,7 @@ class Variant:
     n_heads: int | None = None
     d_ff: int | None = None
     quantization_levels: int = 3
+    quantization_scheme: str = "uniform"
 
 
 def improvement_variants() -> list[Variant]:
@@ -201,6 +202,20 @@ def quantization_level_variants() -> list[Variant]:
     ]
 
 
+def four_level_grouping_variants() -> list[Variant]:
+    """Compare viable fixed and row-adaptive four-value alphabets."""
+    base = next(v for v in quantization_level_variants() if v.quantization_levels == 4)
+    schemes = [
+        ("r4_uniform", "uniform"),
+        ("s4_symmetric_narrow", "symmetric_narrow"),
+        ("t4_symmetric_wide", "symmetric_wide"),
+        ("u4_zero_positive", "zero_positive"),
+        ("v4_zero_negative", "zero_negative"),
+        ("w4_zero_adaptive", "zero_adaptive"),
+    ]
+    return [replace(base, name=name, quantization_scheme=scheme) for name, scheme in schemes]
+
+
 def variants_for_suite(name: str) -> list[Variant]:
     if name == "improvements":
         return improvement_variants()
@@ -210,6 +225,8 @@ def variants_for_suite(name: str) -> list[Variant]:
         return size_matched_variants()
     if name == "quantization_levels":
         return quantization_level_variants()
+    if name == "four_level_groupings":
+        return four_level_grouping_variants()
     raise ValueError(f"unknown experiment suite: {name}")
 
 
@@ -221,6 +238,7 @@ def model_config_for(base: ModelConfig, variant: Variant) -> ModelConfig:
         d_ff=variant.d_ff if variant.d_ff is not None else base.d_ff,
         weight_mode=variant.weight_mode,
         quantization_levels=variant.quantization_levels,
+        quantization_scheme=variant.quantization_scheme,
         tie_core=variant.tie_core,
         memory_enabled=variant.memory_enabled,
         adaptive_halting=variant.adaptive_halting,
@@ -349,6 +367,8 @@ def storage_metrics(model: TernaryRecurrentLM) -> dict[str, Any]:
         else:
             bits = math.ceil(math.log2(layer.quantization_levels))
             packed_bytes += parameter.numel() * bits / 8 + layer.out_features * 4
+            if layer.quantization_scheme == "zero_adaptive":
+                packed_bytes += layer.out_features / 8
             projected = layer.projected_weight().detach()
             counts["negative"] += int((projected < 0).sum())
             counts["zero"] += int((projected == 0).sum())
@@ -363,6 +383,9 @@ def storage_metrics(model: TernaryRecurrentLM) -> dict[str, Any]:
         ),
         "bits_per_quantized_weight": sorted(
             {math.ceil(math.log2(layer.quantization_levels)) for layer in quantized_weights.values()}
+        ),
+        "quantization_schemes": sorted(
+            {layer.quantization_scheme for layer in quantized_weights.values()}
         ),
         "ternary_fractions": {key: value / total for key, value in counts.items()}
         if total
