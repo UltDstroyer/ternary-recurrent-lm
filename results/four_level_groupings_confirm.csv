@@ -1,0 +1,2 @@
+seed,variant,parameters,packed_bytes,validation_cross_entropy,validation_perplexity,validation_accuracy,expected_loops,actual_loops,tokens_per_second,stability_halt_rate,training_seconds
+19,s4_symmetric_narrow,3100065,1233120,0.8581148928455543,2.3587100788359376,0.7303029438612506,6.0,6,5729.292810364743,0.0,678.5423263000002
