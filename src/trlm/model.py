@@ -34,6 +34,7 @@ class CausalAttention(nn.Module):
             "weight_mode": config.weight_mode,
             "threshold_factor": config.ternary_threshold,
             "quantization_levels": config.quantization_levels,
+            "quantization_scheme": config.quantization_scheme,
         }
         self.qkv = make_linear(config.d_model, 3 * config.d_model, **kwargs)
         self.output = make_linear(config.d_model, config.d_model, **kwargs)
@@ -60,6 +61,7 @@ class RecurrentCore(nn.Module):
             "weight_mode": config.weight_mode,
             "threshold_factor": config.ternary_threshold,
             "quantization_levels": config.quantization_levels,
+            "quantization_scheme": config.quantization_scheme,
         }
         self.attention_norm = RMSNorm(config.d_model)
         self.attention = CausalAttention(config)
@@ -123,6 +125,7 @@ class TernaryRecurrentLM(nn.Module):
                 config.ternary_threshold,
                 config.weight_mode,
                 config.quantization_levels,
+                config.quantization_scheme,
                 config.memory_novelty_power,
                 config.memory_merge_threshold,
                 config.memory_chunks,
@@ -138,6 +141,7 @@ class TernaryRecurrentLM(nn.Module):
             weight_mode=config.weight_mode,
             threshold_factor=config.ternary_threshold,
             quantization_levels=config.quantization_levels,
+            quantization_scheme=config.quantization_scheme,
         )
         self.halt_head = nn.Linear(config.d_model, 1) if config.adaptive_halting else None
         self.loop_embedding = (
