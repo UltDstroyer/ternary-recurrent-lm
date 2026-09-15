@@ -13,9 +13,9 @@ the predefined validation split. There were three seeds: 19, 23, and 29.
 
 | Weight levels | Validation loss (mean ± SD) | Perplexity | Accuracy | Estimated packed size |
 |---:|---:|---:|---:|---:|
-| 3 | 0.8501 ± 0.0236 | 2.3404 ± 0.0550 | 73.31% ± 0.89 pp | 1,233,120 bytes |
-| 4 | 0.8347 ± 0.0119 | 2.3043 ± 0.0273 | 73.70% ± 0.44 pp | 1,233,120 bytes |
-| 5 | **0.7843 ± 0.0259** | **2.1914 ± 0.0563** | **75.17% ± 0.98 pp** | 1,606,284 bytes |
+| 3 | 0.8467 ± 0.0181 | 2.3321 ± 0.0421 | 73.25% ± 0.60 pp | 1,233,120 bytes |
+| 4 | 0.8191 ± 0.0097 | 2.2686 ± 0.0221 | 74.24% ± 0.26 pp | 1,233,120 bytes |
+| 5 | **0.7820 ± 0.0198** | **2.1862 ± 0.0433** | **75.28% ± 0.72 pp** | 1,606,284 bytes |
 
 Lower validation loss and perplexity are better; higher accuracy is better. Perplexity can be
 read as the model's effective number of plausible next-byte choices, so a reduction is useful.
@@ -24,21 +24,20 @@ read as the model's effective number of plausible next-byte choices, so a reduct
 
 Using the same seeds makes the comparisons less noisy:
 
-- Four levels reduced mean validation loss by 0.0154 (1.81%) versus three levels and raised
-  accuracy by 0.39 percentage points. The loss improvement occurred in every seed, although it
-  was small for seed 19.
-- Five levels reduced mean validation loss by 0.0658 (7.74%) versus three levels and raised
-  accuracy by 1.86 percentage points. It won in every seed.
-- Five levels reduced mean validation loss by 0.0504 versus four levels and raised accuracy by
-  1.47 percentage points.
+- Four levels reduced mean validation loss by 0.0276 (3.25%) versus three levels and raised
+  accuracy by 0.98 percentage points. The loss improvement occurred in every seed.
+- Five levels reduced mean validation loss by 0.0647 (7.64%) versus three levels and raised
+  accuracy by 2.03 percentage points. It won in every seed.
+- Five levels reduced mean validation loss by 0.0371 versus four levels and raised accuracy by
+  1.05 percentage points.
 
 The loss changes by seed (comparison minus reference; negative is better) were:
 
 | Comparison | Seed 19 | Seed 23 | Seed 29 | Mean |
 |---|---:|---:|---:|---:|
-| 4 levels − 3 levels | -0.0019 | -0.0203 | -0.0240 | -0.0154 |
-| 5 levels − 3 levels | -0.0690 | -0.0606 | -0.0679 | -0.0658 |
-| 5 levels − 4 levels | -0.0671 | -0.0402 | -0.0439 | -0.0504 |
+| 4 levels − 3 levels | -0.0095 | -0.0394 | -0.0338 | -0.0276 |
+| 5 levels − 3 levels | -0.0660 | -0.0655 | -0.0624 | -0.0647 |
+| 5 levels − 4 levels | -0.0566 | -0.0261 | -0.0286 | -0.0371 |
 
 ## Storage and sparsity
 
@@ -55,10 +54,11 @@ exploit.
 
 ## Simulated training speed
 
-The measured CPU throughputs were approximately 9,161 tokens/s for three levels and 7,572 and
-7,569 tokens/s for four and five levels. The generic multi-level quantizer performs extra
-assignment and scale-refinement work during every projection, while the legacy 3-level path is
-optimized. This simulated training-speed difference is therefore an implementation cost, not
+The measured CPU throughputs were approximately 9,084 tokens/s for three levels and 8,091
+tokens/s for four levels. The 5-level seeds ran across two temporary compute environments, so
+their timing is not directly comparable as one benchmark. The generic multi-level quantizer
+performs extra assignment and scale-refinement work during every projection, while the legacy
+3-level path is optimized. These simulated training speeds are implementation costs, not
 evidence about eventual packed inference hardware.
 
 ## Interpretation
@@ -70,10 +70,9 @@ under ordinary binary packing. A useful next experiment is to compare 4 and 5 le
 exact total-byte budget, reallocating the 5-level model's width so both packed models occupy the
 same space.
 
-## Recovery note
+## Reproducibility note
 
-All nine runs completed successfully and the measurements above were captured before the
-temporary workspace reset. The exact aggregate statistics and seed-level validation losses are
-preserved in `results/quantization_levels_recovered_summary.csv`. The original detailed per-run
-JSON and CSV were not yet committed and must be regenerated before analyses that require their
-full fields.
+All nine runs completed successfully. Complete per-run measurements are preserved in
+`results/quantization_levels.json` and `results/quantization_levels.csv`; aggregate statistics
+are in `results/quantization_levels_summary.csv`. The final 5-level seed was resumed from the
+eight-run checkpoint after a temporary workspace reset.
