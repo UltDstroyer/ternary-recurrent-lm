@@ -1188,6 +1188,235 @@
       },
       "training_seconds": 213.52709307199984,
       "training_tokens": 327680
+    },
+    {
+      "seed": 19,
+      "variant": {
+        "name": "w4_zero_adaptive",
+        "weight_mode": "quantized",
+        "tie_core": true,
+        "memory_enabled": true,
+        "adaptive_halting": false,
+        "ponder_cost": 0.0,
+        "memory_novelty_power": 0.5,
+        "memory_merge_threshold": 0.15,
+        "redundancy_halting": false,
+        "redundancy_halt_threshold": 0.15,
+        "redundancy_patience": 2,
+        "loop_embeddings": false,
+        "loop_norms": false,
+        "loop_adapter_rank": 0,
+        "memory_chunks": 1,
+        "intermediate_loss_weight": 0.0,
+        "improvement_loss_weight": 0.0,
+        "memory_start_fraction": 0.0,
+        "ternary_warmup_fraction": 0.15,
+        "ternary_ramp_fraction": 0.7,
+        "distillation_weight": 0.0,
+        "distillation_temperature": 2.0,
+        "stability_halting": false,
+        "stability_kl_threshold": 0.02,
+        "stability_patience": 2,
+        "halting_start_fraction": 0.0,
+        "d_model": 352,
+        "n_heads": 8,
+        "d_ff": 1888,
+        "quantization_levels": 4,
+        "quantization_scheme": "zero_adaptive"
+      },
+      "model": {
+        "vocab_size": 256,
+        "d_model": 352,
+        "n_heads": 8,
+        "d_ff": 1888,
+        "max_seq_len": 64,
+        "max_loops": 6,
+        "min_loops": 2,
+        "memory_slots": 12,
+        "dropout": 0.0,
+        "ternary_threshold": 0.7,
+        "halt_epsilon": 0.01,
+        "weight_mode": "quantized",
+        "quantization_levels": 4,
+        "quantization_scheme": "zero_adaptive",
+        "tie_core": true,
+        "memory_enabled": true,
+        "adaptive_halting": false,
+        "memory_novelty_power": 0.5,
+        "memory_merge_threshold": 0.15,
+        "redundancy_halting": false,
+        "redundancy_halt_threshold": 0.15,
+        "redundancy_patience": 2,
+        "loop_embeddings": false,
+        "loop_norms": false,
+        "loop_adapter_rank": 0,
+        "memory_chunks": 1,
+        "stability_halting": false,
+        "stability_kl_threshold": 0.02,
+        "stability_patience": 2
+      },
+      "storage": {
+        "parameters": 3100065,
+        "full_precision_bytes": 12400260,
+        "estimated_packed_inference_bytes": 1233989,
+        "quantization_levels": [
+          4
+        ],
+        "bits_per_quantized_weight": [
+          2
+        ],
+        "quantization_schemes": [
+          "zero_adaptive"
+        ],
+        "ternary_fractions": {
+          "negative": 0.2920157089108274,
+          "zero": 0.41699326569551187,
+          "positive": 0.2909910253936607
+        }
+      },
+      "initial_validation": {
+        "cross_entropy": 5.6390326711914955,
+        "perplexity": 281.19058312258255,
+        "next_byte_accuracy": 0.002389034687357371,
+        "expected_loops": 6.0,
+        "expected_loops_std": 0.0,
+        "actual_loops": 6,
+        "tokens_per_second": 4767.630784261074,
+        "exit_mass_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "memory_raw_novelty_by_loop": [
+          1.0,
+          0.04508395493030548,
+          0.10854495316743851,
+          0.1206749752163887,
+          0.10838363319635391,
+          0.09411972761154175
+        ],
+        "memory_novelty_by_loop": [
+          1.0,
+          0.21216630935668945,
+          0.32925066351890564,
+          0.34718433022499084,
+          0.32895734906196594,
+          0.30660727620124817
+        ],
+        "memory_write_by_loop": [
+          0.4898504912853241,
+          0.10756946355104446,
+          0.17295798659324646,
+          0.1895480751991272,
+          0.18708202242851257,
+          0.18159356713294983
+        ],
+        "redundancy_halt_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "stability_halt_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "prediction_divergence_by_loop": [
+          0.0,
+          0.0011870033340528607,
+          0.0011637740535661578,
+          0.0011597324628382921,
+          0.0011573286028578877,
+          0.0011379545321688056
+        ]
+      },
+      "final_training_batch": {
+        "loss": 1.7805075645446777,
+        "language_loss": 1.7805075645446777,
+        "expected_loops": 6.0,
+        "intermediate_loss": 2.0986499786376953,
+        "improvement_loss": 0.0,
+        "distillation_loss": 0.0,
+        "memory_novelty": 0.6267643570899963,
+        "write_strength": 0.5885989665985107,
+        "redundancy_halt_rate": 0.0
+      },
+      "validation": {
+        "cross_entropy": 1.711354049794046,
+        "perplexity": 5.536453037602075,
+        "next_byte_accuracy": 0.5053771109082611,
+        "expected_loops": 6.0,
+        "expected_loops_std": 0.0,
+        "actual_loops": 6,
+        "tokens_per_second": 2750.6586331497206,
+        "exit_mass_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          1.0
+        ],
+        "memory_raw_novelty_by_loop": [
+          1.0,
+          0.6847031116485596,
+          0.7904772758483887,
+          0.17235784232616425,
+          0.07213038951158524,
+          0.07983501255512238
+        ],
+        "memory_novelty_by_loop": [
+          1.0,
+          0.8237277865409851,
+          0.8847050666809082,
+          0.4101266860961914,
+          0.2590875029563904,
+          0.28024253249168396
+        ],
+        "memory_write_by_loop": [
+          0.850823163986206,
+          0.7852094769477844,
+          0.868346631526947,
+          0.4029351770877838,
+          0.25312793254852295,
+          0.27035555243492126
+        ],
+        "redundancy_halt_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "stability_halt_by_loop": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "prediction_divergence_by_loop": [
+          0.0,
+          0.3225207030773163,
+          0.6315004229545593,
+          0.11603084951639175,
+          0.04104161262512207,
+          0.031527530401945114
+        ]
+      },
+      "training_seconds": 367.3491516029999,
+      "training_tokens": 327680
     }
   ]
 }
