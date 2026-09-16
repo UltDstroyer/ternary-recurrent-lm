@@ -1,0 +1,10 @@
+scope,rank,variant,levels,accuracy_mean,cross_entropy_mean,tokens_per_second_reference,zero_fraction,packed_bytes,notes
+confirmed,1,q4_level_shared_capacity,"-1,-0.3333,0.3333,1",0.742357466149399,0.819114260526257,8091.207951232561,0.0,1233120,"Existing 3-seed uniform baseline; timing from its original runtime"
+confirmed,2,u4_zero_positive,"-1,0,0.5,1",0.7333385630610072,0.8474392724802519,6658.994501349052,0.5054248936124599,1233120,"3-seed accuracy; timing uses comparable seed 19/23 runtime only"
+confirmed,3,s4_symmetric_narrow,"-1,-0.25,0.25,1",0.7318956336528222,0.853206519175207,6095.68602896459,0.0,1233120,"3-seed accuracy; timing uses comparable seed 19/23 runtime only"
+screen,1,s4_symmetric_narrow,"-1,-0.25,0.25,1",0.5142201049748973,1.669972963389715,5709.583839233876,0.0,1233120,"320-step seed-19 screen"
+screen,2,u4_zero_positive,"-1,0,0.5,1",0.512986364673665,1.6849991055396745,4813.9757015776595,0.428337473604099,1233120,"320-step seed-19 screen"
+screen,3,r4_uniform,"-1,-0.3333,0.3333,1",0.512558477863989,1.6797691312134402,4634.314681671613,0.0,1233120,"320-step seed-19 screen"
+screen,4,v4_zero_negative,"-1,-0.5,0,1",0.5105545413053401,1.6885259176486707,3469.3116447935677,0.42832909927002605,1233120,"320-step seed-19 screen"
+screen,5,t4_symmetric_wide,"-1,-0.5,0.5,1",0.5095133500684619,1.6889445784972281,5212.6777856119825,0.0,1233120,"320-step seed-19 screen"
+screen,6,w4_zero_adaptive,"row-adaptive zero-positive/zero-negative",0.5053771109082611,1.711354049794046,2750.6586331497206,0.41699326569551187,1233989,"320-step seed-19 screen; includes one selector bit per output row"
