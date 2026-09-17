@@ -22,6 +22,18 @@ trlm-ablate --config configs/size_matched.json --output results/size_matched.jso
 trlm-ablate --config configs/quantization_levels.json --output results/quantization_levels.json
 ```
 
+To run the GPU-only 10,000-step confirmation comparing the 3-level baseline with the
+uniform 4-level model across seeds 19, 23, and 29:
+
+```bash
+bash scripts/run_four_level_vs_ternary_10k.sh
+```
+
+The launcher detects local Unix and Windows virtual environments, verifies that CUDA is
+available, downloads WikiText-2 if needed, and resumes from
+`results/four_level_vs_ternary_10k.json`. It checkpoints the JSON and CSV outputs after every
+completed seed/model pair.
+
 The runner checkpoints after every variant. Add `--resume` to skip completed seed/variant
 pairs after an interruption.
 
