@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import platform
 import random
 import subprocess
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import torch
@@ -39,6 +38,7 @@ class BranchStats:
     merges: int = 0
     core_calls: int = 0
     peak_threads: int = 1
+    threads_by_pass: list[int] = field(default_factory=list)
 
 
 class SerialLM(nn.Module):
@@ -48,26 +48,41 @@ class SerialLM(nn.Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, BranchStats]:
         output = self.model(x, allow_halting=False)
-        return output.logits[:, -1], BranchStats(core_calls=output.loops_executed)
+        return output.logits[:, -1], BranchStats(
+            core_calls=output.loops_executed,
+            threads_by_pass=[1] * output.loops_executed,
+        )
 
     def set_quantization_strength(self, strength: float) -> None:
         self.model.set_ternary_strength(strength)
 
 
 class BranchLM(nn.Module):
-    """One shared quantized core, up to four idea states, and one shared scratchpad.
+    """One quantized core, bounded parallel ideas, and one shared scratchpad.
 
-    Split and merge decisions use batch-mean similarity and are discrete controls.
-    Splits create distinct trainable offsets; merger averages the two idea states.
-    The same scratchpad is read and written by every live idea thread.
+    Two new ideas can spawn each pass from the most novel parents. All live
+    ideas read one memory snapshot before their writes are committed together
+    for the next pass. Similar ideas can merge after two passes of development.
+    Split and merge controls never inspect the target token.
     """
-    def __init__(self, config: ModelConfig, max_threads: int = 4, merge_threshold: float = 0.98) -> None:
+    def __init__(
+        self,
+        config: ModelConfig,
+        max_threads: int = 8,
+        children_per_pass: int = 2,
+        split_threshold: float = 0.15,
+        merge_threshold: float = 0.995,
+    ) -> None:
         super().__init__()
+        if max_threads < 1 or children_per_pass < 0:
+            raise ValueError("max_threads must be positive and children_per_pass nonnegative")
         self.base = TernaryRecurrentLM(config)
         self.config = config
         self.max_threads = max_threads
+        self.children_per_pass = children_per_pass
+        self.split_threshold = split_threshold
         self.merge_threshold = merge_threshold
-        self.idea_offsets = nn.Parameter(torch.randn(max_threads - 1, config.d_model) * 0.05)
+        self.idea_offsets = nn.Parameter(torch.randn(max_threads - 1, config.d_model) * 0.15)
         self.idea_gate = nn.Linear(config.d_model, 1, bias=False)
 
     def set_quantization_strength(self, strength: float) -> None:
@@ -83,21 +98,38 @@ class BranchLM(nn.Module):
             base.token_embedding(x) + base.position_embedding(position)[None]
         )
         values, occupied = memory.empty(batch, device=hidden.device, dtype=hidden.dtype)
-        stats = BranchStats()
-        # The first pass precedes idea branching.
+        stats = BranchStats(threads_by_pass=[1])
         hidden = base.core(hidden, torch.zeros_like(hidden))
         stats.core_calls += 1
         values, occupied, _, novelty, _ = memory.write(hidden, values, occupied, 0)
         branches = [hidden]
+        branch_novelties = [novelty]
+        branch_ages = [1]
+        spawn_index = 0
         for loop_index in range(1, self.config.max_loops):
-            # A candidate idea is added when the current state has room for exploration.
-            if len(branches) < self.max_threads and bool(novelty.mean().detach() > 0.15):
-                source = branches[0]
-                offset = self.idea_offsets[len(branches) - 1][None, None]
-                branches.append(source + offset)
+            candidates = sorted(
+                range(len(branches)),
+                key=lambda i: float(branch_novelties[i].mean().detach()),
+                reverse=True,
+            )
+            candidates = [
+                i for i in candidates
+                if bool(branch_novelties[i].mean().detach() > self.split_threshold)
+            ]
+            to_spawn = min(self.children_per_pass, self.max_threads - len(branches))
+            for child_index in range(to_spawn):
+                if not candidates:
+                    break
+                parent = candidates[child_index % len(candidates)]
+                offset = self.idea_offsets[spawn_index % len(self.idea_offsets)][None, None]
+                branches.append(branches[parent] + offset)
+                branch_novelties.append(branch_novelties[parent])
+                branch_ages.append(0)
+                spawn_index += 1
                 stats.splits += 1
             stats.peak_threads = max(stats.peak_threads, len(branches))
             threads = len(branches)
+            stats.threads_by_pass.append(threads)
             stacked = torch.stack(branches, dim=1).flatten(0, 1)
             shared_values = values[:, None].expand(-1, threads, -1, -1).reshape(
                 batch * threads, memory.slots, self.config.d_model
@@ -110,27 +142,39 @@ class BranchLM(nn.Module):
             advanced = parallel.reshape(batch, threads, length, -1).unbind(dim=1)
             stats.core_calls += threads
             current_novelties = []
-            # All threads read the same pre-pass memory; their writes are then
-            # committed to the one shared scratchpad for the following pass.
             for thread_index, state in enumerate(advanced):
                 values, occupied, _, current_novelty, _ = memory.write(
                     state, values, occupied,
                     loop_index * self.max_threads + thread_index,
                 )
                 current_novelties.append(current_novelty)
-            novelty = torch.stack(current_novelties).mean(dim=0)
-            # Merge nearly identical threads; decisions never use a target.
-            branches = []
-            for state in advanced:
-                if branches:
-                    similarity = F.cosine_similarity(
-                        state[:, -1].detach(), branches[-1][:, -1].detach(), dim=-1
-                    ).mean()
-                    if loop_index >= 3 and bool(similarity > self.merge_threshold):
-                        branches[-1] = (branches[-1] + state) / 2
-                        stats.merges += 1
-                        continue
-                branches.append(state)
+            branches, branch_novelties, new_ages = [], [], []
+            for state, current_novelty, age in zip(
+                advanced, current_novelties, branch_ages
+            ):
+                age += 1
+                nearest, best_similarity = None, -1.0
+                if loop_index >= 3 and age >= 2:
+                    for candidate_index, candidate in enumerate(branches):
+                        if new_ages[candidate_index] < 2:
+                            continue
+                        similarity = float(F.cosine_similarity(
+                            state[:, -1].detach(), candidate[:, -1].detach(), dim=-1
+                        ).mean())
+                        if similarity > best_similarity:
+                            nearest, best_similarity = candidate_index, similarity
+                if nearest is not None and best_similarity > self.merge_threshold:
+                    branches[nearest] = (branches[nearest] + state) / 2
+                    branch_novelties[nearest] = (
+                        branch_novelties[nearest] + current_novelty
+                    ) / 2
+                    new_ages[nearest] = max(new_ages[nearest], age)
+                    stats.merges += 1
+                else:
+                    branches.append(state)
+                    branch_novelties.append(current_novelty)
+                    new_ages.append(age)
+            branch_ages = new_ages
         leaked = torch.stack([
             base.leak_projection(base.leak_norm(state))[:, -1]
             for state in branches
@@ -163,7 +207,7 @@ class UntiedTransformer(nn.Module):
         for block in self.blocks:
             hidden = block(hidden, zero)
         return self.head(self.output_norm(hidden[:, -1])), BranchStats(
-            core_calls=len(self.blocks)
+            core_calls=len(self.blocks), threads_by_pass=[1] * len(self.blocks)
         )
 
 
@@ -194,6 +238,7 @@ def evaluate(model: nn.Module, x: Tensor, y: Tensor, device: torch.device, batch
     model.eval()
     total_loss = total_correct = total = 0
     stats = BranchStats()
+    threads_by_pass: list[float] = []
     for first in range(0, len(x), batch):
         logits, current = model(x[first:first + batch].to(device))
         targets = y[first:first + batch].to(device)
@@ -204,6 +249,10 @@ def evaluate(model: nn.Module, x: Tensor, y: Tensor, device: torch.device, batch
         stats.merges += current.merges * len(targets)
         stats.core_calls += current.core_calls * len(targets)
         stats.peak_threads = max(stats.peak_threads, current.peak_threads)
+        if not threads_by_pass:
+            threads_by_pass = [0.0] * len(current.threads_by_pass)
+        for pass_index, threads in enumerate(current.threads_by_pass):
+            threads_by_pass[pass_index] += threads * len(targets)
     return {
         "cross_entropy": total_loss / total,
         "accuracy": total_correct / total,
@@ -211,6 +260,7 @@ def evaluate(model: nn.Module, x: Tensor, y: Tensor, device: torch.device, batch
         "merges_per_example": stats.merges / total,
         "core_calls_per_example": stats.core_calls / total,
         "peak_threads": stats.peak_threads,
+        "mean_threads_by_pass": [threads / total for threads in threads_by_pass],
         "scored_targets": total,
     }
 
@@ -234,20 +284,20 @@ def run(args: argparse.Namespace) -> dict:
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA was requested but torch.cuda.is_available() is false")
     if device.type == "cpu":
-        torch.set_num_threads(min(2, torch.get_num_threads()))
+        torch.set_num_threads(args.torch_threads)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
-    width = 352 if args.full_size else 64
+    width = args.width if args.width is not None else (352 if args.full_size else 64)
     loops = args.passes if args.passes is not None else (6 if args.full_size else 3)
-    length = 32 if args.full_size else 12
-    ff = 1888 if args.full_size else 192
+    length = args.prefix_length if args.prefix_length is not None else (32 if args.full_size else 12)
+    ff = args.feed_forward if args.feed_forward is not None else (1888 if args.full_size else 192)
     batch = args.batch_size if args.batch_size is not None else (8 if args.full_size else 2)
     steps = args.steps if args.steps is not None else (200 if args.full_size else 2)
     train_count = args.train_count if args.train_count is not None else (4096 if args.full_size else 64)
     valid_count = args.validation_count if args.validation_count is not None else (512 if args.full_size else 24)
     common = dict(
         vocab_size=256 if args.dataset == "wikitext2" else 16,
-        d_model=width, n_heads=8 if args.full_size else 4, d_ff=ff,
+        d_model=width, n_heads=8 if width % 8 == 0 else 4, d_ff=ff,
         max_seq_len=length, max_loops=loops, min_loops=loops,
         memory_slots=12, adaptive_halting=False, redundancy_halting=False,
         dropout=0.0, memory_enabled=True,
@@ -272,7 +322,12 @@ def run(args: argparse.Namespace) -> dict:
                for _ in range(steps)]
     models = {
         "serial": lambda: SerialLM(recurrent_config),
-        "branches": lambda: BranchLM(recurrent_config, merge_threshold=args.merge_threshold),
+        "branches": lambda: BranchLM(
+            recurrent_config, max_threads=args.max_threads,
+            children_per_pass=args.children_per_pass,
+            split_threshold=args.split_threshold,
+            merge_threshold=args.merge_threshold,
+        ),
         "untied_full_transformer": lambda: UntiedTransformer(full_config),
     }
     results = {}
@@ -324,6 +379,7 @@ def run(args: argparse.Namespace) -> dict:
         "environment": {
             "python": platform.python_version(), "torch": torch.__version__,
             "device": str(device),
+            "cpu_threads": torch.get_num_threads() if device.type == "cpu" else None,
             "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
             "revision": revision,
         },
@@ -332,6 +388,9 @@ def run(args: argparse.Namespace) -> dict:
             "feed_forward": ff, "passes": loops, "prefix_length": length,
             "steps": steps, "batch_size": batch, "train_examples": train_count,
             "validation_examples": valid_count, "seed": args.seed,
+            "max_threads": args.max_threads,
+            "children_per_pass": args.children_per_pass,
+            "split_threshold": args.split_threshold,
             "merge_threshold": args.merge_threshold,
             "target_position": "immediately after entire prefix",
             "quantization_schedule": "warmup 0.15, ramp 0.70, fully quantized validation",
@@ -343,14 +402,21 @@ def run(args: argparse.Namespace) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    parser.add_argument("--torch-threads", type=int, default=4)
     parser.add_argument("--full-size", action="store_true")
     parser.add_argument("--passes", type=int)
+    parser.add_argument("--width", type=int)
+    parser.add_argument("--feed-forward", type=int)
+    parser.add_argument("--prefix-length", type=int)
     parser.add_argument("--dataset", choices=["synthetic", "wikitext2"], default="synthetic")
     parser.add_argument("--steps", type=int)
     parser.add_argument("--train-count", type=int)
     parser.add_argument("--validation-count", type=int)
     parser.add_argument("--batch-size", type=int)
-    parser.add_argument("--merge-threshold", type=float, default=0.98)
+    parser.add_argument("--max-threads", type=int, default=8)
+    parser.add_argument("--children-per-pass", type=int, default=2)
+    parser.add_argument("--split-threshold", type=float, default=0.15)
+    parser.add_argument("--merge-threshold", type=float, default=0.995)
     parser.add_argument("--seed", type=int, default=19)
     parser.add_argument("--output", type=Path, default=Path("results/four_level_branch_probe.json"))
     args = parser.parse_args()
