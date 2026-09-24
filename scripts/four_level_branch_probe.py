@@ -116,7 +116,7 @@ class BranchLM(nn.Module):
                     similarity = F.cosine_similarity(
                         state[:, -1].detach(), branches[-1][:, -1].detach(), dim=-1
                     ).mean()
-                    if bool(similarity > self.merge_threshold):
+                    if loop_index >= 3 and bool(similarity > self.merge_threshold):
                         branches[-1] = (branches[-1] + state) / 2
                         stats.merges += 1
                         continue
@@ -228,7 +228,7 @@ def run(args: argparse.Namespace) -> dict:
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     width = 352 if args.full_size else 64
-    loops = 6 if args.full_size else 3
+    loops = args.passes if args.passes is not None else (6 if args.full_size else 3)
     length = 32 if args.full_size else 12
     ff = 1888 if args.full_size else 192
     batch = args.batch_size if args.batch_size is not None else (8 if args.full_size else 2)
@@ -329,6 +329,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--full-size", action="store_true")
+    parser.add_argument("--passes", type=int)
     parser.add_argument("--dataset", choices=["synthetic", "wikitext2"], default="synthetic")
     parser.add_argument("--steps", type=int)
     parser.add_argument("--train-count", type=int)
