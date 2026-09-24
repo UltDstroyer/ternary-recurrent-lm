@@ -6,6 +6,7 @@ sequence-wide scratchpad summaries cannot see any scored target token.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import platform
 import random
@@ -354,8 +355,50 @@ def run(args: argparse.Namespace) -> dict:
         ),
         "untied_full_transformer": lambda: UntiedTransformer(full_config),
     }
-    results = {}
+    try:
+        revision = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
+        ).strip()
+    except (OSError, subprocess.CalledProcessError):
+        revision = None
+    script_sha256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    report = {
+        "environment": {
+            "python": platform.python_version(), "torch": torch.__version__,
+            "device": str(device),
+            "cpu_threads": torch.get_num_threads() if device.type == "cpu" else None,
+            "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+            "revision": revision, "script_sha256": script_sha256,
+        },
+        "settings": {
+            "dataset": args.dataset, "full_size": args.full_size, "width": width,
+            "feed_forward": ff, "passes": loops, "prefix_length": length,
+            "steps": steps, "batch_size": batch, "train_examples": train_count,
+            "validation_examples": valid_count, "seed": args.seed,
+            "max_threads": args.max_threads,
+            "children_per_pass": args.children_per_pass,
+            "split_threshold": args.split_threshold,
+            "merge_threshold": args.merge_threshold,
+            "target_position": "immediately after entire prefix",
+            "quantization_schedule": "warmup 0.15, ramp 0.70, fully quantized validation",
+        },
+        "models": {}, "complete": False,
+    }
+    if args.resume and args.output.exists():
+        prior = json.loads(args.output.read_text(encoding="utf-8"))
+        if prior.get("settings") != report["settings"] or any(
+            prior.get("environment", {}).get(key) != report["environment"][key]
+            for key in ("python", "torch", "device", "cpu_threads", "script_sha256")
+        ):
+            raise ValueError("resume requires identical settings, runtime, and probe script")
+        if set(prior.get("models", {})) - set(models):
+            raise ValueError("resume file contains unrecognized model results")
+        report["models"] = prior["models"]
+    results = report["models"]
     for name, make_model in models.items():
+        if name in results:
+            print("resuming: already completed", name, flush=True)
+            continue
         torch.manual_seed(args.seed)
         model = make_model().to(device)
         optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4)
@@ -390,37 +433,19 @@ def run(args: argparse.Namespace) -> dict:
             "inference_batch_size": batch,
         }
         print(name, json.dumps(results[name]), flush=True)
+        save_report(args.output, report)
         del model, optimizer
         if device.type == "cuda":
             torch.cuda.empty_cache()
-    try:
-        revision = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], text=True, stderr=subprocess.DEVNULL
-        ).strip()
-    except (OSError, subprocess.CalledProcessError):
-        revision = None
-    return {
-        "environment": {
-            "python": platform.python_version(), "torch": torch.__version__,
-            "device": str(device),
-            "cpu_threads": torch.get_num_threads() if device.type == "cpu" else None,
-            "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
-            "revision": revision,
-        },
-        "settings": {
-            "dataset": args.dataset, "full_size": args.full_size, "width": width,
-            "feed_forward": ff, "passes": loops, "prefix_length": length,
-            "steps": steps, "batch_size": batch, "train_examples": train_count,
-            "validation_examples": valid_count, "seed": args.seed,
-            "max_threads": args.max_threads,
-            "children_per_pass": args.children_per_pass,
-            "split_threshold": args.split_threshold,
-            "merge_threshold": args.merge_threshold,
-            "target_position": "immediately after entire prefix",
-            "quantization_schedule": "warmup 0.15, ramp 0.70, fully quantized validation",
-        },
-        "models": results,
-    }
+    report["complete"] = True
+    return report
+
+
+def save_report(path: Path, report: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
 
 
 def main() -> None:
@@ -445,11 +470,11 @@ def main() -> None:
     parser.add_argument("--split-threshold", type=float, default=0.15)
     parser.add_argument("--merge-threshold", type=float, default=0.995)
     parser.add_argument("--seed", type=int, default=19)
+    parser.add_argument("--resume", action="store_true", help="skip completed models in the output JSON")
     parser.add_argument("--output", type=Path, default=Path("results/four_level_branch_probe.json"))
     args = parser.parse_args()
     report = run(args)
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    save_report(args.output, report)
     print("wrote", args.output)
 
 
