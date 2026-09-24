@@ -17,10 +17,10 @@ jobs:
       - name: PyTorch and three-way CPU smoke
         run: |
           python -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.cuda.is_available())"
-          bash scripts/run_four_level_branch_probe.sh --device cpu --steps 2
+          bash scripts/run_four_level_branch_probe.sh --device cpu --steps 2\n          bash scripts/run_four_level_branch_probe.sh --device cpu --steps 120 --train-count 2048 --validation-count 256 --batch-size 8 --output results/four_level_branch_pilot.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: four-level-branch-smoke
-          path: results/four_level_branch_probe.json
+          path: results/four_level_branch_*.json
           if-no-files-found: ignore
