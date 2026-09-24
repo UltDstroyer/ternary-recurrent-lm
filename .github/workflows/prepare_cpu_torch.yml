@@ -18,6 +18,7 @@ jobs:
           python -m pip download --index-url https://download.pytorch.org/whl/cpu 'torch==2.14.0+cpu' --dest wheelhouse
           mkdir -p wheel_chunks wheel_dependencies
           split -b 20m -d -a 2 wheelhouse/torch-2.14.0+cpu-*.whl wheel_chunks/part-
+          rm wheelhouse/torch-2.14.0+cpu-*.whl
           mv wheelhouse/*.whl wheel_dependencies/
           echo "chunk count: $(find wheel_chunks -type f | wc -l)"
       - uses: actions/upload-artifact@v4
