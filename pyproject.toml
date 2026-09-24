@@ -12,6 +12,7 @@ dependencies = ["numpy>=1.26", "torch>=2.3"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+eeg = ["mne>=1.6", "scikit-learn>=1.4", "scipy>=1.11"]
 
 [project.scripts]
 trlm-train = "trlm.train:main"
@@ -27,3 +28,4 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+

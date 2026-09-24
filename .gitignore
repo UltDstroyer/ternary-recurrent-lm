@@ -12,3 +12,5 @@ data/external/
 results/recovery-*
 *.pt
 *.pth
+
+data/eegmat/
