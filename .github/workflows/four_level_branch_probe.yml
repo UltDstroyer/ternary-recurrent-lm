@@ -26,6 +26,9 @@ jobs:
       - name: WikiText-2 held-out next-byte pilot
         continue-on-error: true
         run: bash scripts/run_four_level_branch_probe.sh --device cpu --dataset wikitext2 --passes 6 --steps 400 --train-count 4096 --validation-count 256 --batch-size 8 --output results/four_level_branch_wikitext2.json
+      - name: Full-size architecture CPU shape check
+        continue-on-error: true
+        run: bash scripts/run_four_level_branch_probe.sh --device cpu --full-size --steps 1 --train-count 16 --validation-count 8 --batch-size 1 --output results/four_level_branch_full_size_shapecheck.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
