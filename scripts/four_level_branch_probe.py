@@ -61,11 +61,12 @@ class BranchLM(nn.Module):
     Splits create distinct trainable offsets; merger averages the two idea states.
     The same scratchpad is read and written by every live idea thread.
     """
-    def __init__(self, config: ModelConfig, max_threads: int = 4) -> None:
+    def __init__(self, config: ModelConfig, max_threads: int = 4, merge_threshold: float = 0.98) -> None:
         super().__init__()
         self.base = TernaryRecurrentLM(config)
         self.config = config
         self.max_threads = max_threads
+        self.merge_threshold = merge_threshold
         self.idea_offsets = nn.Parameter(torch.randn(max_threads - 1, config.d_model) * 0.05)
         self.idea_gate = nn.Linear(config.d_model, 1, bias=False)
 
@@ -115,7 +116,7 @@ class BranchLM(nn.Module):
                     similarity = F.cosine_similarity(
                         state[:, -1].detach(), branches[-1][:, -1].detach(), dim=-1
                     ).mean()
-                    if bool(similarity > 0.999):
+                    if bool(similarity > self.merge_threshold):
                         branches[-1] = (branches[-1] + state) / 2
                         stats.merges += 1
                         continue
@@ -140,6 +141,8 @@ class UntiedTransformer(nn.Module):
         self.output_norm = RMSNorm(config.d_model)
         self.head = nn.Linear(config.d_model, config.vocab_size, bias=False)
         self.head.weight = self.token_embedding.weight
+        nn.init.normal_(self.token_embedding.weight, mean=0.0, std=0.02)
+        nn.init.normal_(self.position_embedding.weight, mean=0.0, std=0.02)
 
     def forward(self, x: Tensor) -> tuple[Tensor, BranchStats]:
         positions = torch.arange(x.shape[1], device=x.device)
@@ -228,10 +231,10 @@ def run(args: argparse.Namespace) -> dict:
     loops = 6 if args.full_size else 3
     length = 32 if args.full_size else 12
     ff = 1888 if args.full_size else 192
-    batch = 8 if args.full_size else 2
+    batch = args.batch_size if args.batch_size is not None else (8 if args.full_size else 2)
     steps = args.steps if args.steps is not None else (200 if args.full_size else 2)
-    train_count = 4096 if args.full_size else 64
-    valid_count = 512 if args.full_size else 24
+    train_count = args.train_count if args.train_count is not None else (4096 if args.full_size else 64)
+    valid_count = args.validation_count if args.validation_count is not None else (512 if args.full_size else 24)
     common = dict(
         vocab_size=256 if args.dataset == "wikitext2" else 16,
         d_model=width, n_heads=8 if args.full_size else 4, d_ff=ff,
@@ -259,7 +262,7 @@ def run(args: argparse.Namespace) -> dict:
                for _ in range(steps)]
     models = {
         "serial": lambda: SerialLM(recurrent_config),
-        "branches": lambda: BranchLM(recurrent_config),
+        "branches": lambda: BranchLM(recurrent_config, merge_threshold=args.merge_threshold),
         "untied_full_transformer": lambda: UntiedTransformer(full_config),
     }
     results = {}
@@ -315,6 +318,7 @@ def run(args: argparse.Namespace) -> dict:
             "feed_forward": ff, "passes": loops, "prefix_length": length,
             "steps": steps, "batch_size": batch, "train_examples": train_count,
             "validation_examples": valid_count, "seed": args.seed,
+            "merge_threshold": args.merge_threshold,
             "target_position": "immediately after entire prefix",
         },
         "models": results,
@@ -327,6 +331,10 @@ def main() -> None:
     parser.add_argument("--full-size", action="store_true")
     parser.add_argument("--dataset", choices=["synthetic", "wikitext2"], default="synthetic")
     parser.add_argument("--steps", type=int)
+    parser.add_argument("--train-count", type=int)
+    parser.add_argument("--validation-count", type=int)
+    parser.add_argument("--batch-size", type=int)
+    parser.add_argument("--merge-threshold", type=float, default=0.98)
     parser.add_argument("--seed", type=int, default=19)
     parser.add_argument("--output", type=Path, default=Path("results/four_level_branch_probe.json"))
     args = parser.parse_args()
