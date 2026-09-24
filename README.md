@@ -11,6 +11,8 @@ that were promising in a one-seed pilot.
 For the local CPU comparison of the shared-core four-level model, expanded
 shared-memory branches, and an untied Transformer, see
 [`docs/expanded_branch_cpu.md`](docs/expanded_branch_cpu.md).
+For the RX 7700 XT ROCm GPU setup, see
+[`docs/expanded_branch_rocm.md`](docs/expanded_branch_rocm.md).
 
 ## Run
 
