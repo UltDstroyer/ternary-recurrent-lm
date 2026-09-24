@@ -8,6 +8,10 @@ chunk-level memory, progressive supervision, staged memory, gradual ternarizatio
 distillation, and prediction-stability halting. It also tests a combination of the mechanisms
 that were promising in a one-seed pilot.
 
+For the local CPU comparison of the shared-core four-level model, expanded
+shared-memory branches, and an untied Transformer, see
+[`docs/expanded_branch_cpu.md`](docs/expanded_branch_cpu.md).
+
 ## Run
 
 ```bash
