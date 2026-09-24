@@ -58,12 +58,12 @@ class SerialLM(nn.Module):
 
 
 class BranchLM(nn.Module):
-    """One quantized core, bounded parallel ideas, and one shared scratchpad.
+    """One shared quantized core, bounded parallel ideas, and one shared scratchpad.
 
-    Two new ideas can spawn each pass from the most novel parents. All live
-    ideas read one memory snapshot before their writes are committed together
-    for the next pass. Similar ideas can merge after two passes of development.
-    Split and merge controls never inspect the target token.
+    Each pass can spawn two ideas from the most novel parents. All live ideas
+    read the same memory snapshot, then write to the shared scratchpad. After
+    two passes of development, any sufficiently similar ideas may merge.
+    Decisions are batch-level controls and never inspect a target token.
     """
     def __init__(
         self,
@@ -99,6 +99,7 @@ class BranchLM(nn.Module):
         )
         values, occupied = memory.empty(batch, device=hidden.device, dtype=hidden.dtype)
         stats = BranchStats(threads_by_pass=[1])
+        # The first pass precedes idea branching.
         hidden = base.core(hidden, torch.zeros_like(hidden))
         stats.core_calls += 1
         values, occupied, _, novelty, _ = memory.write(hidden, values, occupied, 0)
@@ -142,12 +143,15 @@ class BranchLM(nn.Module):
             advanced = parallel.reshape(batch, threads, length, -1).unbind(dim=1)
             stats.core_calls += threads
             current_novelties = []
+            # All threads read the same pre-pass memory; their writes are then
+            # committed to the one shared scratchpad for the following pass.
             for thread_index, state in enumerate(advanced):
                 values, occupied, _, current_novelty, _ = memory.write(
                     state, values, occupied,
                     loop_index * self.max_threads + thread_index,
                 )
                 current_novelties.append(current_novelty)
+            # Compare all developed ideas, rather than only adjacent threads.
             branches, branch_novelties, new_ages = [], [], []
             for state, current_novelty, age in zip(
                 advanced, current_novelties, branch_ages
@@ -217,6 +221,22 @@ def synthetic_data(seed: int, count: int, length: int) -> tuple[Tensor, Tensor]:
     marker = torch.randint(0, 2, (count,), generator=generator)
     x[:, 0] = marker
     y = torch.where(marker.bool(), x[:, length // 2], x[:, 2]).clone()
+    return x, y
+
+
+def pointer_data(seed: int, count: int, length: int) -> tuple[Tensor, Tensor]:
+    """Select one of eight distant prefix tokens as the next-token target."""
+    if length < 31:
+        raise ValueError("the eight-way pointer task requires a prefix length of at least 31")
+    generator = torch.Generator().manual_seed(seed)
+    x = torch.randint(8, 16, (count, length), generator=generator)
+    marker = torch.randint(0, 8, (count,), generator=generator)
+    x[:, 0] = marker
+    candidate_positions = 2 + 4 * torch.arange(8)
+    x[:, candidate_positions] = torch.randint(
+        8, 16, (count, 8), generator=generator
+    )
+    y = x.gather(1, candidate_positions[marker, None]).squeeze(1).clone()
     return x, y
 
 
@@ -314,6 +334,9 @@ def run(args: argparse.Namespace) -> dict:
         root = Path("data/external/wikitext-2")
         train_x, train_y = wikitext_data(root / "train.txt", train_count, length, args.seed)
         val_x, val_y = wikitext_data(root / "valid.txt", valid_count, length, args.seed + 1)
+    elif args.dataset == "synthetic_pointer":
+        train_x, train_y = pointer_data(args.seed, train_count, length)
+        val_x, val_y = pointer_data(args.seed + 1, valid_count, length)
     else:
         train_x, train_y = synthetic_data(args.seed, train_count, length)
         val_x, val_y = synthetic_data(args.seed + 1, valid_count, length)
@@ -323,7 +346,8 @@ def run(args: argparse.Namespace) -> dict:
     models = {
         "serial": lambda: SerialLM(recurrent_config),
         "branches": lambda: BranchLM(
-            recurrent_config, max_threads=args.max_threads,
+            recurrent_config,
+            max_threads=args.max_threads,
             children_per_pass=args.children_per_pass,
             split_threshold=args.split_threshold,
             merge_threshold=args.merge_threshold,
@@ -408,7 +432,10 @@ def main() -> None:
     parser.add_argument("--width", type=int)
     parser.add_argument("--feed-forward", type=int)
     parser.add_argument("--prefix-length", type=int)
-    parser.add_argument("--dataset", choices=["synthetic", "wikitext2"], default="synthetic")
+    parser.add_argument(
+        "--dataset", choices=["synthetic", "synthetic_pointer", "wikitext2"],
+        default="synthetic",
+    )
     parser.add_argument("--steps", type=int)
     parser.add_argument("--train-count", type=int)
     parser.add_argument("--validation-count", type=int)
