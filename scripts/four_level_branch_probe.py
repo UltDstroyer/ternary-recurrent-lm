@@ -368,6 +368,7 @@ def run(args: argparse.Namespace) -> dict:
             "device": str(device),
             "cpu_threads": torch.get_num_threads() if device.type == "cpu" else None,
             "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+            "rocm_version": torch.version.hip if device.type == "cuda" else None,
             "revision": revision, "script_sha256": script_sha256,
         },
         "settings": {
@@ -388,7 +389,10 @@ def run(args: argparse.Namespace) -> dict:
         prior = json.loads(args.output.read_text(encoding="utf-8"))
         if prior.get("settings") != report["settings"] or any(
             prior.get("environment", {}).get(key) != report["environment"][key]
-            for key in ("python", "torch", "device", "cpu_threads", "script_sha256")
+            for key in (
+                "python", "torch", "device", "cpu_threads", "gpu",
+                "rocm_version", "script_sha256",
+            )
         ):
             raise ValueError("resume requires identical settings, runtime, and probe script")
         if set(prior.get("models", {})) - set(models):
