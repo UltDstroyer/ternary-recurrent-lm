@@ -3,6 +3,10 @@ on:
   push:
     branches:
       - experiment/four-level-branch-comparison
+    paths:
+      - scripts/four_level_branch_probe.py
+      - scripts/run_four_level_branch_probe.sh
+      - .github/workflows/four_level_branch_probe.yml
   workflow_dispatch:
 jobs:
   smoke:
@@ -18,10 +22,10 @@ jobs:
         run: |
           python -c "import torch; print('PyTorch', torch.__version__, 'CUDA', torch.cuda.is_available())"
           bash scripts/run_four_level_branch_probe.sh --device cpu --steps 2
-          bash scripts/run_four_level_branch_probe.sh --device cpu --passes 6 --steps 120 --train-count 2048 --validation-count 256 --batch-size 8 --output results/four_level_branch_pilot.json
+          bash scripts/run_four_level_branch_probe.sh --device cpu --passes 6 --steps 400 --train-count 2048 --validation-count 256 --batch-size 8 --output results/four_level_branch_pilot.json
       - name: WikiText-2 held-out next-byte pilot
         continue-on-error: true
-        run: bash scripts/run_four_level_branch_probe.sh --device cpu --dataset wikitext2 --passes 6 --steps 120 --train-count 4096 --validation-count 256 --batch-size 8 --output results/four_level_branch_wikitext2.json
+        run: bash scripts/run_four_level_branch_probe.sh --device cpu --dataset wikitext2 --passes 6 --steps 400 --train-count 4096 --validation-count 256 --batch-size 8 --output results/four_level_branch_wikitext2.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
