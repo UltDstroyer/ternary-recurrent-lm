@@ -1,0 +1,22 @@
+name: Transfer WikiText-2 splits for local CPU comparison
+on:
+  push:
+    branches:
+      - experiment/expanded-branch-cpu
+    paths:
+      - .github/workflows/prepare_wikitext.yml
+jobs:
+  corpus:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/download_wikitext2.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wikitext2-checksummed-splits
+          path: data/external/wikitext-2/*.txt
+          retention-days: 1
