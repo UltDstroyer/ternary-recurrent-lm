@@ -62,5 +62,6 @@ of packed low-bit hardware speed. The branch decisions use a batch-level
 novelty/similarity average, so branch statistics depend on evaluation batch
 size.
 
-No expanded-branch CPU accuracy or timing numbers have been measured in this
-branch yet. Run the command above to produce them on your machine.
+The automated two-step smoke check verifies that all three models run, but
+its scores are not a trained comparison. Run the command above to produce
+the 300-step results on your machine.
