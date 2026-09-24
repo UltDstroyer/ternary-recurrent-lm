@@ -27,6 +27,11 @@ jobs:
             --max-threads 8 --children-per-pass 2 \
             --steps 2 --train-count 64 --validation-count 32 --batch-size 2 \
             --output results/expanded_branch_cpu_smoke.json
+          bash scripts/run_four_level_branch_probe.sh \
+            --device cpu --dataset synthetic_pointer --full-size \
+            --max-threads 8 --children-per-pass 2 \
+            --steps 2 --train-count 64 --validation-count 32 --batch-size 2 \
+            --resume --output results/expanded_branch_cpu_smoke.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
