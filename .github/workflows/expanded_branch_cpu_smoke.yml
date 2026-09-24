@@ -1,0 +1,35 @@
+name: Expanded branches CPU smoke
+on:
+  push:
+    branches:
+      - experiment/expanded-branch-cpu
+    paths:
+      - scripts/four_level_branch_probe.py
+      - scripts/run_four_level_branch_probe.sh
+      - scripts/run_expanded_branch_cpu.sh
+      - .github/workflows/expanded_branch_cpu_smoke.yml
+  workflow_dispatch:
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: python -m pip install 'numpy>=1.26'
+      - name: Three-model expanded CPU smoke
+        run: |
+          bash scripts/run_four_level_branch_probe.sh \
+            --device cpu --dataset synthetic_pointer --full-size \
+            --max-threads 8 --children-per-pass 2 \
+            --steps 2 --train-count 64 --validation-count 32 --batch-size 2 \
+            --output results/expanded_branch_cpu_smoke.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: expanded-branch-cpu-smoke
+          path: results/expanded_branch_cpu_smoke.json
+          if-no-files-found: ignore
