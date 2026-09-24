@@ -97,17 +97,27 @@ class BranchLM(nn.Module):
                 branches.append(source + offset)
                 stats.splits += 1
             stats.peak_threads = max(stats.peak_threads, len(branches))
-            advanced = []
+            threads = len(branches)
+            stacked = torch.stack(branches, dim=1).flatten(0, 1)
+            shared_values = values[:, None].expand(-1, threads, -1, -1).reshape(
+                batch * threads, memory.slots, self.config.d_model
+            )
+            shared_occupied = occupied[:, None].expand(-1, threads, -1).reshape(
+                batch * threads, memory.slots
+            )
+            context = memory.read(stacked, shared_values, shared_occupied)
+            parallel = base.core(stacked, context)
+            advanced = parallel.reshape(batch, threads, length, -1).unbind(dim=1)
+            stats.core_calls += threads
             current_novelties = []
-            for thread_index, state in enumerate(branches):
-                state = base.core(state, memory.read(state, values, occupied))
+            # All threads read the same pre-pass memory; their writes are then
+            # committed to the one shared scratchpad for the following pass.
+            for thread_index, state in enumerate(advanced):
                 values, occupied, _, current_novelty, _ = memory.write(
                     state, values, occupied,
                     loop_index * self.max_threads + thread_index,
                 )
-                advanced.append(state)
                 current_novelties.append(current_novelty)
-                stats.core_calls += 1
             novelty = torch.stack(current_novelties).mean(dim=0)
             # Merge nearly identical threads; decisions never use a target.
             branches = []
