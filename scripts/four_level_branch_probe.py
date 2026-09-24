@@ -279,13 +279,15 @@ def run(args: argparse.Namespace) -> dict:
     for name, make_model in models.items():
         torch.manual_seed(args.seed)
         model = make_model().to(device)
-        if hasattr(model, "set_quantization_strength"):
-            model.set_quantization_strength(1.0)
         optimizer = torch.optim.AdamW(model.parameters(), lr=5e-4)
         model.train()
         synchronize(device)
         start = time.perf_counter()
-        for index in batches:
+        for step, index in enumerate(batches):
+            if hasattr(model, "set_quantization_strength"):
+                progress = step / max(steps - 1, 1)
+                strength = max(0.0, min(1.0, (progress - 0.15) / 0.7))
+                model.set_quantization_strength(strength)
             optimizer.zero_grad(set_to_none=True)
             logits, _ = model(train_x[index].to(device))
             loss = F.cross_entropy(logits, train_y[index].to(device))
@@ -294,6 +296,8 @@ def run(args: argparse.Namespace) -> dict:
             optimizer.step()
         synchronize(device)
         training_seconds = time.perf_counter() - start
+        if hasattr(model, "set_quantization_strength"):
+            model.set_quantization_strength(1.0)
         valid = evaluate(model, val_x, val_y, device, batch)
         inference = inference_ms(model, val_x, device, batch)
         quantized = sum(m.weight.numel() for m in model.modules()
@@ -330,6 +334,7 @@ def run(args: argparse.Namespace) -> dict:
             "validation_examples": valid_count, "seed": args.seed,
             "merge_threshold": args.merge_threshold,
             "target_position": "immediately after entire prefix",
+            "quantization_schedule": "warmup 0.15, ramp 0.70, fully quantized validation",
         },
         "models": results,
     }
